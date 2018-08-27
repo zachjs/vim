@@ -5223,30 +5223,52 @@ format_lines(
 		curwin->w_cursor.col = 0;
 		if (line_count < 0 && u_save_cursor() == FAIL)
 		    break;
+
+		int prefix_len = 0;
 #ifdef FEAT_COMMENTS
 		if (next_leader_len > 0)
 		{
-		    (void)del_bytes((long)next_leader_len, FALSE, FALSE);
-		    mark_col_adjust(curwin->w_cursor.lnum, (colnr_T)0, 0L,
-						      (long)-next_leader_len);
+		    prefix_len = next_leader_len;
 		} else
 #endif
 		    if (second_indent > 0)  /* the "leader" for FO_Q_SECOND */
 		{
-		    int indent = getwhitecols_curline();
+		    prefix_len = getwhitecols_curline();
+		}
 
-		    if (indent > 0)
+		pos_T scan_pos = curwin->w_cursor;
+		scan_pos.col = prefix_len;
+		while (incl(&scan_pos) != -1)
+		{
+		    if (VIM_ISWHITE(gchar_pos(&scan_pos)))
 		    {
-			(void)del_bytes(indent, FALSE, FALSE);
-			mark_col_adjust(curwin->w_cursor.lnum,
-					       (colnr_T)0, 0L, (long)-indent);
+		        break;
 		    }
 		}
-		curwin->w_cursor.lnum--;
-		if (do_join(2, TRUE, FALSE, FALSE, FALSE) == FAIL)
+
+		// TODO: Account for the space? (only sometimes added)
+		size_t first_word_len = scan_pos.col - prefix_len;
+		size_t joined_lines_min_len =
+		    STRLEN(ml_get(curwin->w_cursor.lnum)) + first_word_len;
+
+		if (joined_lines_min_len <= (size_t)comp_textwidth(TRUE))
 		{
-		    beep_flush();
-		    break;
+		    if (prefix_len > 0)
+		    {
+		        (void)del_bytes(prefix_len, FALSE, FALSE);
+		        mark_col_adjust(curwin->w_cursor.lnum, (colnr_T)0, 0L,
+		    	    (long)-prefix_len);
+		    }
+		    curwin->w_cursor.lnum--;
+		    if (do_join(2, TRUE, FALSE, FALSE, FALSE) == FAIL)
+		    {
+		        beep_flush();
+		        break;
+		    }
+		}
+		else
+		{
+		    curwin->w_cursor.lnum--;
 		}
 		first_par_line = FALSE;
 		/* If the line is getting long, format it next time */
